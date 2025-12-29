@@ -112,25 +112,25 @@ def main(input_file: str):
     
     # Step 1: 加载数据
     print(f"\n[Step 1/4] 加载数据: {input_file}")
-    from src.data_loader import load_ohlc
+    from src.io import load_ohlc
     data = load_ohlc(input_file)
     print(f"  加载完成: {data}")
     print(f"  日期范围: {data.date_range[0].date()} ~ {data.date_range[1].date()}")
     
     # Step 2: 处理原始数据，添加K线状态
     print(f"\n[Step 2/4] 添加 K 线状态标签...")
-    from src.process_ohlc import process_and_save
+    from src.analysis import process_and_save
     process_and_save(data, str(processed_csv))
     
     # Step 3: K 线合并
     print(f"\n[Step 3/4] 合并包含关系的 K 线...")
-    from src.kline_merging import apply_kline_merging
+    from src.analysis.merging import apply_kline_merging
     apply_kline_merging(str(processed_csv), str(merged_csv), 
                         save_plot_path=str(merged_plot))
     
     # Step 4: 分型识别与笔过滤
     print(f"\n[Step 4/4] 识别分型并生成有效笔...")
-    from src.filter_fractals import process_strokes
+    from src.analysis.fractals import process_strokes
     process_strokes(str(merged_csv), str(strokes_csv),
                     save_plot_path=str(strokes_plot))
     

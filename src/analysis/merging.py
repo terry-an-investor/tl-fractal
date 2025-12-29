@@ -1,5 +1,5 @@
 """
-kline_merging.py
+analysis/merging.py
 K 线合并模块，处理包含关系的 K 线合并。
 
 支持标准 OHLC 格式（推荐）和旧版中文列名格式（向后兼容）。
@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .data_schema import COL_DATETIME, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE
+from ..io.schema import COL_DATETIME, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE
 
 # 设置中文显示
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial'] 

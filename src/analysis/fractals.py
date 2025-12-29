@@ -1,5 +1,5 @@
 """
-filter_fractals.py
+analysis/fractals.py
 分型识别与笔过滤模块。
 
 直接从合并后的K线数据中识别分型，并应用笔的过滤规则。
@@ -8,7 +8,7 @@ filter_fractals.py
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from .data_schema import COL_DATETIME, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE
+from ..io.schema import COL_DATETIME, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE
 
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial'] 
 plt.rcParams['axes.unicode_minus'] = False

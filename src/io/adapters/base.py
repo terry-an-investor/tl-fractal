@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Union
 
-from ..data_schema import OHLCData
+from ..schema import OHLCData
 
 
 class DataAdapter(ABC):

@@ -1,11 +1,11 @@
 """
-process_ohlc.py
+analysis/process_ohlc.py
 通用 OHLC 数据处理模块，为 K 线添加状态标签。
 """
 
 import pandas as pd
 from .kline_logic import classify_k_line_combination
-from .data_schema import OHLCData, COL_DATETIME, COL_HIGH, COL_LOW
+from ..io.schema import OHLCData, COL_DATETIME, COL_HIGH, COL_LOW
 
 
 def add_kline_status(data: OHLCData) -> pd.DataFrame:

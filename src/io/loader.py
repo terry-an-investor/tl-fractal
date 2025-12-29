@@ -1,9 +1,9 @@
 """
-data_loader.py
+io/loader.py
 统一数据加载入口，自动选择合适的适配器加载数据。
 
 用法:
-    from src.data_loader import load_ohlc
+    from src.io import load_ohlc
     
     # 自动检测适配器
     data = load_ohlc("data/raw/TL.CFE.xlsx")
@@ -15,7 +15,7 @@ data_loader.py
 from pathlib import Path
 from typing import Union, Optional
 
-from .data_schema import OHLCData
+from .schema import OHLCData
 from .adapters import WindCFEAdapter
 from .adapters.base import DataAdapter
 

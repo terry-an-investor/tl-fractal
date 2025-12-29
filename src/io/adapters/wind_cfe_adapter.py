@@ -13,7 +13,7 @@ from typing import Union
 import pandas as pd
 
 from .base import DataAdapter
-from ..data_schema import (
+from ..schema import (
     OHLCData, 
     COL_DATETIME, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME
 )
