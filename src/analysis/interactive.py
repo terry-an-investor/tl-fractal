@@ -42,14 +42,38 @@ def plot_interactive_kline(df: pd.DataFrame,
     # 按索引排序
     sorted_strokes = sorted(strokes, key=lambda x: x[0])
     
+    # 遍历分型，根据用户需求：只连接 B -> T (上涨笔)
+    # 不连接 T -> B
+    for i in range(len(sorted_strokes) - 1):
+        curr_idx, curr_type = sorted_strokes[i]
+        next_idx, next_type = sorted_strokes[i+1]
+        
+        # 仅当当前是底(B)且下一个是顶(T)时，画线
+        if curr_type == 'B' and next_type == 'T':
+            # 获取价格
+            curr_price = df['low'].iloc[curr_idx]
+            next_price = df['high'].iloc[next_idx]
+            
+            # 添加线段起点(B)
+            stroke_x.append(curr_idx)
+            stroke_y.append(curr_price)
+            
+            # 添加线段终点(T)
+            stroke_x.append(next_idx)
+            stroke_y.append(next_price)
+            
+            # 添加断点(None)，使每条 B->T 独立
+            stroke_x.append(None)
+            stroke_y.append(None)
+    
+    # 重置遍历用于添加 Annotations，避免遗漏孤立点
     for idx, f_type in sorted_strokes:
         if idx < 0 or idx >= len(df):
             continue
             
         if f_type == 'T':
             price = df['high'].iloc[idx]
-            stroke_x.append(idx)
-            stroke_y.append(price)
+            # stroke_x/y 的收集逻辑已移出
             # 添加顶分型标注
             annotations.append(dict(
                 x=idx, y=price,
@@ -61,8 +85,7 @@ def plot_interactive_kline(df: pd.DataFrame,
             
         elif f_type == 'B':
             price = df['low'].iloc[idx]
-            stroke_x.append(idx)
-            stroke_y.append(price)
+            # stroke_x/y 的收集逻辑已移出
             # 添加底分型标注
             annotations.append(dict(
                 x=idx, y=price,

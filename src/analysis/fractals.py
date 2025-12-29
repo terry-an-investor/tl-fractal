@@ -380,7 +380,30 @@ def plot_strokes(df, strokes, all_markers, col_dt, col_open, col_high, col_low, 
                         xytext=(plot_idx + 0.3, price*0.998),
                         ha='left', fontsize=8, fontweight='bold', color=color)
     
-    # 笔的连线和S/R线已移除，只保留T/B分型标注
+    # 绘制 B->T 连线 (上涨笔)
+    # stroke list example: [(idx, 'T'), (idx, 'B')]
+    # plot_strokes_only 已经是相对索引 (idx-offset, type)
+    
+    sorted_strokes = sorted(plot_strokes_only, key=lambda x: x[0])
+    
+    for i in range(len(sorted_strokes) - 1):
+        curr_idx, curr_type = sorted_strokes[i]
+        next_idx, next_type = sorted_strokes[i+1]
+        
+        # 过滤: 必须在绘图范围内 (虽然 plot_strokes_only 可能会有负索引，但在 loop 前应该已经处理? 
+        # 这里 plot_strokes_only 生成时只是减去了 offset, 没有过滤范围，所以必须检查)
+        if curr_idx < 0 or curr_idx >= len(plot_df) or next_idx < 0 or next_idx >= len(plot_df):
+            continue
+            
+        # 仅连接 B -> T
+        if curr_type == 'B' and next_type == 'T':
+            # B在low, T在high
+            y1 = lows.iloc[curr_idx]
+            y2 = highs.iloc[next_idx]
+            
+            ax.plot([curr_idx, next_idx], [y1, y2], color='purple', linewidth=1.5, alpha=0.8)
+
+    # 绘制所有分型标记 (T/B Annotations)
     
     step = 5
     ax.set_xticks(range(0, len(plot_df), step))
