@@ -114,15 +114,75 @@ def apply_kline_merging(input_path, output_path, save_plot_path=None):
                 # Down Trend: 取高点中的低点，低点中的低点
                 new_high = min(h_prev, h_curr)
                 new_low = min(l_prev, l_curr)
+            
+            # 更新 close 为当前K线的收盘价
+            new_close = curr[col_close]
+            new_open = prev[col_open]  # 保留合并前第一根的开盘价
+            
+            # 【关键修复】确保 OHLC 一致性：
+            # - low 必须 ≤ min(open, close)
+            # - high 必须 ≥ max(open, close)
+            new_low = min(new_low, new_open, new_close)
+            new_high = max(new_high, new_open, new_close)
                 
             # 原地更新 prev
             prev[col_high] = new_high
             prev[col_low] = new_low
-            prev[col_close] = curr[col_close]
+            prev[col_close] = new_close
             prev[col_dt] = curr[col_dt] 
             prev['kline_status'] = "MERGED" 
             
             merge_count += 1
+            
+            # 【向左回溯】合并后OHLC可能变化，检查是否与更早的K线形成新的包含关系
+            while len(merged_bars) >= 2:
+                last = merged_bars[-1]
+                second_last = merged_bars[-2]
+                
+                h_last, l_last = last[col_high], last[col_low]
+                h_second, l_second = second_last[col_high], second_last[col_low]
+                
+                is_inside_back = (h_last <= h_second) and (l_last >= l_second)
+                is_outside_back = (h_last >= h_second) and (l_last <= l_second)
+                
+                if not (is_inside_back or is_outside_back):
+                    break  # 无包含关系，停止回溯
+                
+                # 确定回溯时的趋势
+                if len(merged_bars) >= 3:
+                    third_last = merged_bars[-3]
+                    h_third, l_third = third_last[col_high], third_last[col_low]
+                    if h_second > h_third and l_second > l_third:
+                        backtrack_trend = 1
+                    elif h_second < h_third and l_second < l_third:
+                        backtrack_trend = -1
+                    else:
+                        backtrack_trend = current_trend
+                else:
+                    backtrack_trend = current_trend
+                
+                if backtrack_trend == 1:
+                    new_high_back = max(h_second, h_last)
+                    new_low_back = max(l_second, l_last)
+                else:
+                    new_high_back = min(h_second, h_last)
+                    new_low_back = min(l_second, l_last)
+                
+                # OHLC一致性
+                new_open_back = second_last[col_open]
+                new_close_back = last[col_close]
+                new_low_back = min(new_low_back, new_open_back, new_close_back)
+                new_high_back = max(new_high_back, new_open_back, new_close_back)
+                
+                # 合并：更新second_last，移除last
+                second_last[col_high] = new_high_back
+                second_last[col_low] = new_low_back
+                second_last[col_close] = new_close_back
+                second_last[col_dt] = last[col_dt]
+                second_last['kline_status'] = "MERGED"
+                merged_bars.pop()
+                merge_count += 1
+            
             # i 增加，下一轮循环将用新的 prev (即刚刚合并后的结果) 与 raw_bars[i+1] 对比
             # 这就实现了向右的递归合并
             i += 1
@@ -135,6 +195,58 @@ def apply_kline_merging(input_path, output_path, save_plot_path=None):
                 current_trend = -1
             
             merged_bars.append(curr)
+            
+            # 【新增】向左回溯检查：新加入的K线可能与更早的K线形成包含关系
+            # 这种情况发生在合并后OHLC调整改变了high/low
+            while len(merged_bars) >= 2:
+                last = merged_bars[-1]
+                second_last = merged_bars[-2]
+                
+                h_last, l_last = last[col_high], last[col_low]
+                h_second, l_second = second_last[col_high], second_last[col_low]
+                
+                is_inside_back = (h_last <= h_second) and (l_last >= l_second)
+                is_outside_back = (h_last >= h_second) and (l_last <= l_second)
+                
+                if not (is_inside_back or is_outside_back):
+                    break  # 无包含关系，停止回溯
+                
+                # 需要合并最后两根
+                # 重新确定趋势（基于前一根的状态）
+                if len(merged_bars) >= 3:
+                    third_last = merged_bars[-3]
+                    h_third, l_third = third_last[col_high], third_last[col_low]
+                    if h_second > h_third and l_second > l_third:
+                        backtrack_trend = 1
+                    elif h_second < h_third and l_second < l_third:
+                        backtrack_trend = -1
+                    else:
+                        backtrack_trend = current_trend
+                else:
+                    backtrack_trend = current_trend
+                
+                if backtrack_trend == 1:
+                    new_high = max(h_second, h_last)
+                    new_low = max(l_second, l_last)
+                else:
+                    new_high = min(h_second, h_last)
+                    new_low = min(l_second, l_last)
+                
+                # OHLC一致性检查
+                new_open = second_last[col_open]
+                new_close = last[col_close]
+                new_low = min(new_low, new_open, new_close)
+                new_high = max(new_high, new_open, new_close)
+                
+                # 更新second_last，移除last
+                second_last[col_high] = new_high
+                second_last[col_low] = new_low
+                second_last[col_close] = new_close
+                second_last[col_dt] = last[col_dt]
+                second_last['kline_status'] = "MERGED"
+                merged_bars.pop()
+                merge_count += 1
+            
             i += 1
 
     # --- 新增步骤：重新计算合并后的 K 线状态 ---
@@ -168,7 +280,49 @@ def apply_kline_merging(input_path, output_path, save_plot_path=None):
     result_df.to_csv(output_path, index=False, encoding='utf-8')
     print(f"合并完成。次数: {merge_count}")
     
+    # 验证合并结果
+    _validate_merged_data(result_df, col_high, col_low, col_open, col_close)
+    
     plot_merged_kline(result_df, col_dt, col_open, col_high, col_low, col_close, save_plot_path)
+
+
+def _validate_merged_data(df, col_high, col_low, col_open, col_close):
+    """
+    验证合并后的K线数据：
+    1. OHLC一致性：low ≤ min(open, close) 且 high ≥ max(open, close)
+    2. 无包含关系：相邻K线都是趋势关系
+    """
+    # 检查OHLC一致性
+    ohlc_violations = []
+    for i, row in df.iterrows():
+        o, h, l, c = row[col_open], row[col_high], row[col_low], row[col_close]
+        if l > min(o, c) or h < max(o, c):
+            ohlc_violations.append(i)
+    
+    if ohlc_violations:
+        print(f"⚠️ OHLC一致性违规: {len(ohlc_violations)} 个")
+    else:
+        print("✅ OHLC一致性验证通过")
+    
+    # 检查相邻K线的包含关系
+    inclusion_count = 0
+    for i in range(1, len(df)):
+        prev = df.iloc[i-1]
+        curr = df.iloc[i]
+        
+        h1, l1 = prev[col_high], prev[col_low]
+        h2, l2 = curr[col_high], curr[col_low]
+        
+        is_inside = (h2 <= h1) and (l2 >= l1)
+        is_outside = (h2 >= h1) and (l2 <= l1)
+        
+        if is_inside or is_outside:
+            inclusion_count += 1
+    
+    if inclusion_count > 0:
+        print(f"⚠️ 发现 {inclusion_count} 对包含关系未处理")
+    else:
+        print("✅ 无包含关系，所有相邻K线都是趋势关系")
 
 
 def plot_merged_kline(df, col_dt, col_open, col_high, col_low, col_close, save_path=None):

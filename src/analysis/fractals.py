@@ -239,13 +239,14 @@ def plot_strokes(df, strokes, all_markers, col_dt, col_open, col_high, col_low, 
     
     df[col_dt] = pd.to_datetime(df[col_dt])
     
-    num_bars = 100
-    plot_df = df.tail(num_bars).copy().reset_index(drop=True)
+    # 显示全部数据
+    plot_df = df.copy().reset_index(drop=True)
+    num_bars = len(plot_df)
     
     # 调整索引到 plot_df 的范围
-    offset = len(df) - num_bars
-    plot_strokes_only = [(idx - offset, t[0]) for idx, t in strokes if idx >= offset]  # 仅用于连线
-    plot_all_markers = [(idx - offset, t) for idx, t in all_markers if idx >= offset]  # 用于所有标记
+    offset = 0  # 全部数据，无偏移
+    plot_strokes_only = [(idx, t[0]) for idx, t in strokes]  # 仅用于连线
+    plot_all_markers = [(idx, t) for idx, t in all_markers]  # 用于所有标记
     
     dates = plot_df[col_dt]
     opens = plot_df[col_open]
@@ -253,7 +254,9 @@ def plot_strokes(df, strokes, all_markers, col_dt, col_open, col_high, col_low, 
     highs = plot_df[col_high]
     lows = plot_df[col_low]
     
-    fig, ax = plt.subplots(figsize=(14, 8))
+    # 根据数据量调整图表宽度
+    fig_width = max(14, len(plot_df) * 0.12)
+    fig, ax = plt.subplots(figsize=(fig_width, 8))
     
     width = 0.6
     width2 = 0.05
@@ -267,6 +270,7 @@ def plot_strokes(df, strokes, all_markers, col_dt, col_open, col_high, col_low, 
     ax.bar(plot_df.index[down], highs[down]-lows[down], width2, bottom=lows[down], color=col_down)
     ax.bar(plot_df.index[up], (closes[up]-opens[up]).abs(), width, bottom=opens[up], color=col_up)
     ax.bar(plot_df.index[down], (closes[down]-opens[down]).abs(), width, bottom=closes[down], color=col_down)
+
     
     # 绘制所有分型标记
     for plot_idx, f_type in plot_all_markers:
@@ -313,8 +317,14 @@ def plot_strokes(df, strokes, all_markers, col_dt, col_open, col_high, col_low, 
     ax.legend()
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        # 保存 PNG（高DPI）
+        plt.savefig(save_path, dpi=200, bbox_inches='tight')
         print(f"图表已保存至: {save_path}")
+        
+        # 同时保存 SVG 矢量图
+        svg_path = save_path.replace('.png', '.svg')
+        plt.savefig(svg_path, format='svg', bbox_inches='tight')
+        print(f"矢量图已保存至: {svg_path}")
         plt.close()
     else:
         plt.show()
