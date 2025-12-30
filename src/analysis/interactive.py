@@ -167,39 +167,36 @@ class ChartBuilder:
         添加顶底分型标记
         
         Args:
-            fractals: 分型标记列表 [(index, 'T'|'B'), ...]
+            fractals: 分型标记列表 [(index, 'T'|'B'|'Tx'|'Bx'), ...]
         
         Returns:
             self: 支持链式调用
         """
-        # 【关键】只筛选有效的 T 和 B
-        valid_fractals = [
-            (idx, f_type) for idx, f_type in fractals 
-            if f_type in ('T', 'B')
-        ]
-        
-        for idx, f_type in valid_fractals:
+        for idx, f_type in fractals:
             if idx < 0 or idx >= len(self.df):
                 continue
             
             row = self.df.iloc[idx]
-            if f_type == 'T':
+            is_cancelled = 'x' in f_type
+            base_type = f_type.replace('x', '')
+            
+            if base_type == 'T':
                 price = float(row['high'])
                 self.markers.append({
                     'time': self._timestamp(row['datetime']),
                     'position': 'aboveBar',
-                    'color': '#ef5350',
+                    'color': '#9e9e9e' if is_cancelled else '#ef5350',  # 灰色 vs 红色
                     'shape': 'arrowDown',
-                    'text': f'T {price:.2f}'
+                    'text': f'Tx' if is_cancelled else f'T {price:.2f}'
                 })
-            elif f_type == 'B':
+            elif base_type == 'B':
                 price = float(row['low'])
                 self.markers.append({
                     'time': self._timestamp(row['datetime']),
                     'position': 'belowBar',
-                    'color': '#26a69a',
+                    'color': '#9e9e9e' if is_cancelled else '#26a69a',  # 灰色 vs 绿色
                     'shape': 'arrowUp',
-                    'text': f'B {price:.2f}'
+                    'text': f'Bx' if is_cancelled else f'B {price:.2f}'
                 })
         
         return self
@@ -278,34 +275,39 @@ class ChartBuilder:
             flex: 1;
             width: 100%;
         }}
-        .tooltip {{
+        .ohlc-panel {{
             position: absolute;
-            display: none;
+            top: 50px;
+            left: 10px;
             padding: 8px 12px;
-            background: rgba(30, 34, 45, 0.95);
-            border: 1px solid #2a2e39;
+            background: rgba(30, 34, 45, 0.85);
             border-radius: 4px;
             font-size: 12px;
             z-index: 1000;
             pointer-events: none;
-        }}
-        .tooltip-row {{
             display: flex;
-            justify-content: space-between;
-            gap: 20px;
-            margin: 2px 0;
+            gap: 15px;
+            align-items: center;
         }}
-        .tooltip-label {{
+        .ohlc-item {{
+            display: flex;
+            gap: 4px;
+        }}
+        .ohlc-label {{
             color: #787b86;
         }}
-        .tooltip-value {{
+        .ohlc-value {{
             font-weight: 500;
         }}
-        .tooltip-value.up {{
+        .ohlc-value.up {{
             color: #26a69a;
         }}
-        .tooltip-value.down {{
+        .ohlc-value.down {{
             color: #ef5350;
+        }}
+        .ohlc-date {{
+            color: #d1d4dc;
+            margin-right: 10px;
         }}
     </style>
 </head>
@@ -315,9 +317,9 @@ class ChartBuilder:
             <h1>{title}</h1>
             <div class="legend" id="legend"></div>
         </div>
-        <div id="chart-container"></div>
-    </div>
-    <div class="tooltip" id="tooltip"></div>
+        <div id="chart-container">
+            <div class="ohlc-panel" id="ohlc-panel"></div>
+        </div></div>
 
     <script>
         // 数据
@@ -354,6 +356,7 @@ class ChartBuilder:
             }},
             rightPriceScale: {{
                 borderColor: '#2a2e39',
+                mode: LightweightCharts.PriceScaleMode.Logarithmic,
                 scaleMargins: {{
                     top: 0.1,
                     bottom: 0.1,
@@ -363,11 +366,51 @@ class ChartBuilder:
                 borderColor: '#2a2e39',
                 timeVisible: true,
                 secondsVisible: false,
+                rightOffset: 5,
             }},
             handleScroll: {{
                 vertTouchDrag: false,
             }},
+            handleScale: {{
+                mouseWheel: false,  // 禁用默认滚轮缩放，使用自定义实现
+            }},
         }});
+
+        // 自定义滚轮缩放：以鼠标位置为中心
+        container.addEventListener('wheel', (e) => {{
+            e.preventDefault();
+            
+            const timeScale = chart.timeScale();
+            const visibleRange = timeScale.getVisibleLogicalRange();
+            if (!visibleRange) return;
+
+            const containerRect = container.getBoundingClientRect();
+            const mouseX = e.clientX - containerRect.left;
+            const chartWidth = containerRect.width;
+            
+            // 鼠标在图表中的相对位置 (0-1)
+            const mouseRatio = mouseX / chartWidth;
+            
+            // 当前可见范围
+            const rangeLength = visibleRange.to - visibleRange.from;
+            
+            // 缩放因子：向上滚动放大，向下滚动缩小
+            const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
+            const newRangeLength = rangeLength * zoomFactor;
+            
+            // 限制最小/最大缩放范围
+            if (newRangeLength < 10 || newRangeLength > candlestickData.length) return;
+            
+            // 以鼠标位置为中心计算新范围
+            const mouseLogicalPos = visibleRange.from + rangeLength * mouseRatio;
+            const newFrom = mouseLogicalPos - newRangeLength * mouseRatio;
+            const newTo = mouseLogicalPos + newRangeLength * (1 - mouseRatio);
+            
+            timeScale.setVisibleLogicalRange({{
+                from: newFrom,
+                to: newTo,
+            }});
+        }}, {{ passive: false }});
 
         // K 线系列
         const candlestickSeries = chart.addCandlestickSeries({{
@@ -430,18 +473,18 @@ class ChartBuilder:
             legendContainer.appendChild(strokeLegend);
         }}
 
-        // Tooltip (悬浮信息)
-        const tooltip = document.getElementById('tooltip');
+        // OHLC 面板 (左上角固定显示)
+        const ohlcPanel = document.getElementById('ohlc-panel');
         
         chart.subscribeCrosshairMove((param) => {{
             if (!param.time || !param.point) {{
-                tooltip.style.display = 'none';
+                ohlcPanel.innerHTML = '';
                 return;
             }}
 
             const data = param.seriesData.get(candlestickSeries);
             if (!data) {{
-                tooltip.style.display = 'none';
+                ohlcPanel.innerHTML = '';
                 return;
             }}
 
@@ -450,66 +493,32 @@ class ChartBuilder:
             
             const change = data.close - data.open;
             const changeClass = change >= 0 ? 'up' : 'down';
+            const changePercent = ((change / data.open) * 100).toFixed(2);
+            const changeSign = change >= 0 ? '+' : '';
             
             // 获取指标值
             let indicatorHtml = '';
-            indicators.forEach((indicator, index) => {{
-                const series = chart.getSeries()[index + 1]; // +1 因为第一个是 candlestick
-                // 简化：直接从数据中查找
+            indicators.forEach((indicator) => {{
                 const found = indicator.data.find(d => d.time === param.time);
                 if (found) {{
                     indicatorHtml += `
-                        <div class="tooltip-row">
-                            <span class="tooltip-label">${{indicator.name}}</span>
-                            <span class="tooltip-value" style="color:${{indicator.color}}">${{found.value.toFixed(4)}}</span>
+                        <div class="ohlc-item">
+                            <span class="ohlc-label">${{indicator.name}}:</span>
+                            <span class="ohlc-value" style="color:${{indicator.color}}">${{found.value.toFixed(4)}}</span>
                         </div>
                     `;
                 }}
             }});
 
-            tooltip.innerHTML = `
-                <div class="tooltip-row">
-                    <span class="tooltip-label">日期</span>
-                    <span class="tooltip-value">${{dateStr}}</span>
-                </div>
-                <div class="tooltip-row">
-                    <span class="tooltip-label">开</span>
-                    <span class="tooltip-value ${{changeClass}}">${{data.open.toFixed(4)}}</span>
-                </div>
-                <div class="tooltip-row">
-                    <span class="tooltip-label">高</span>
-                    <span class="tooltip-value ${{changeClass}}">${{data.high.toFixed(4)}}</span>
-                </div>
-                <div class="tooltip-row">
-                    <span class="tooltip-label">低</span>
-                    <span class="tooltip-value ${{changeClass}}">${{data.low.toFixed(4)}}</span>
-                </div>
-                <div class="tooltip-row">
-                    <span class="tooltip-label">收</span>
-                    <span class="tooltip-value ${{changeClass}}">${{data.close.toFixed(4)}}</span>
-                </div>
+            ohlcPanel.innerHTML = `
+                <span class="ohlc-date">${{dateStr}}</span>
+                <div class="ohlc-item"><span class="ohlc-label">O:</span><span class="ohlc-value ${{changeClass}}">${{data.open.toFixed(4)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">H:</span><span class="ohlc-value ${{changeClass}}">${{data.high.toFixed(4)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">L:</span><span class="ohlc-value ${{changeClass}}">${{data.low.toFixed(4)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">C:</span><span class="ohlc-value ${{changeClass}}">${{data.close.toFixed(4)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-value ${{changeClass}}">${{changeSign}}${{changePercent}}%</span></div>
                 ${{indicatorHtml}}
             `;
-
-            // 定位 tooltip
-            const x = param.point.x;
-            const y = param.point.y;
-            const containerRect = container.getBoundingClientRect();
-            
-            let left = x + 20;
-            let top = y + 20;
-            
-            // 防止超出边界
-            if (left + 180 > containerRect.width) {{
-                left = x - 180;
-            }}
-            if (top + 200 > containerRect.height) {{
-                top = y - 200;
-            }}
-
-            tooltip.style.display = 'block';
-            tooltip.style.left = left + 'px';
-            tooltip.style.top = (top + containerRect.top) + 'px';
         }});
 
         // 自适应大小

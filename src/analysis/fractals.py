@@ -64,7 +64,8 @@ def process_strokes(input_path, output_path, save_plot_path=None):
         return
     
     # ============================================================
-    # 第一步：识别原始分型（3根K线组合）
+    # 第一步：识别原始分型（纯3根K线组合）
+    # 注：分型识别只看相邻3根K线，距离约束在笔过滤阶段处理
     # ============================================================
     raw_fractals = [''] * n  # '', 'TOP', 'BOTTOM'
     
@@ -72,10 +73,10 @@ def process_strokes(input_path, output_path, save_plot_path=None):
         h_prev, h_curr, h_next = highs[i-1], highs[i], highs[i+1]
         l_prev, l_curr, l_next = lows[i-1], lows[i], lows[i+1]
         
-        # 顶分型：中间High最高
+        # 顶分型：中间K线的High比左右都高
         if h_curr > h_prev and h_curr > h_next:
             raw_fractals[i] = 'TOP'
-        # 底分型：中间Low最低
+        # 底分型：中间K线的Low比左右都低
         elif l_curr < l_prev and l_curr < l_next:
             raw_fractals[i] = 'BOTTOM'
     
@@ -112,18 +113,25 @@ def process_strokes(input_path, output_path, save_plot_path=None):
             
             dist = idx - last_stroke_end[0]
             
-            # 同向分型：极值比较
+            # 同向分型：极值比较（需检查新分型与上上笔终点的距离）
             if f_type == last_stroke_end[1]:
+                # 计算与上上笔终点的距离（如果存在的话）
+                prev_stroke_idx = strokes[-2][0] if len(strokes) >= 2 else -MIN_DIST
+                dist_to_prev = idx - prev_stroke_idx
+                
                 if f_type == 'TOP' and highs[idx] > highs[last_stroke_end[0]]:
-                    old = strokes.pop()
-                    replaced_candidates.append(old)
-                    strokes.append((idx, f_type))
-                    last_stroke_end = (idx, f_type)
+                    # 只有当新分型与上上笔终点距离足够时才替换
+                    if dist_to_prev >= MIN_DIST:
+                        old = strokes.pop()
+                        replaced_candidates.append(old)
+                        strokes.append((idx, f_type))
+                        last_stroke_end = (idx, f_type)
                 elif f_type == 'BOTTOM' and lows[idx] < lows[last_stroke_end[0]]:
-                    old = strokes.pop()
-                    replaced_candidates.append(old)
-                    strokes.append((idx, f_type))
-                    last_stroke_end = (idx, f_type)
+                    if dist_to_prev >= MIN_DIST:
+                        old = strokes.pop()
+                        replaced_candidates.append(old)
+                        strokes.append((idx, f_type))
+                        last_stroke_end = (idx, f_type)
                 continue
             
             # 反向分型：检查距离
@@ -171,10 +179,42 @@ def process_strokes(input_path, output_path, save_plot_path=None):
                         pending = (idx, f_type)
                     continue
             
-            # 距离足够，确认pending
-            strokes.append(pending)
-            last_stroke_end = pending
-            pending = (idx, f_type)
+            # 距离足够，准备确认 pending
+            # 【关键验证】检查从 last_stroke_end 到 pending 的区间内是否存在更极端的价格
+            # 如果存在，说明 pending 不是真正的极值点，这一笔无效
+            is_valid_stroke = True
+            if last_stroke_end is not None:
+                start_idx = last_stroke_end[0]
+                end_idx = pending_idx
+                
+                if pending_type == 'TOP':
+                    # 检查区间内是否有更高的 high
+                    max_high_in_range = max(highs[start_idx:end_idx+1])
+                    if max_high_in_range > highs[pending_idx]:
+                        is_valid_stroke = False
+                elif pending_type == 'BOTTOM':
+                    # 检查区间内是否有更低的 low
+                    min_low_in_range = min(lows[start_idx:end_idx+1])
+                    if min_low_in_range < lows[pending_idx]:
+                        is_valid_stroke = False
+            
+            if is_valid_stroke:
+                strokes.append(pending)
+                last_stroke_end = pending
+                pending = (idx, f_type)
+            else:
+                # 笔无效：pending 不是真正的极值点
+                # 【方案3】只回溯一层：取消 last_stroke_end，然后直接确认当前分型
+                replaced_candidates.append(pending)
+                if strokes:
+                    old_stroke = strokes.pop()
+                    replaced_candidates.append(old_stroke)
+                
+                # 回溯后，直接将当前反向分型确认为新的笔端点，不再验证
+                # 这样可以避免级联取消
+                strokes.append((idx, f_type))
+                last_stroke_end = (idx, f_type)
+                pending = None
     
     # 处理最后一个pending
     if pending is not None:

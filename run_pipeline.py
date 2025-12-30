@@ -192,10 +192,18 @@ def main(input_file: str):
 
 
 if __name__ == "__main__":
+    # 默认数据文件
+    DEFAULT_FILE = "data/raw/TB10Y.WI.xlsx"
+    
     # 支持命令行参数或交互式选择
     if len(sys.argv) > 1:
         input_file = sys.argv[1]
-    else:
+    elif sys.stdin.isatty():
+        # 交互式终端，让用户选择
         input_file = select_file_interactive()
+    else:
+        # 非交互式（如 agent 调用），使用默认文件
+        print(f"非交互模式，使用默认文件: {DEFAULT_FILE}")
+        input_file = DEFAULT_FILE
     
     main(input_file)
