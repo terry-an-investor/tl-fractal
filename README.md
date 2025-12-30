@@ -77,7 +77,7 @@ echo "" | uv run run_pipeline.py
 - **智能识别**: 程序启动后会扫描 `data/raw` 目录下的文件。支持识别标准 Wind 命名格式（如 `600519_SH.xlsx`），即使该代码不在配置列表中，也会自动归类并尝试解析中文名。
 - **批量处理**: 支持输入多个序号（用空格或逗号分隔）进行顺序处理。
 - **描述性目录**: 运行结果将保存在以 `代码_名称` 命名的子目录中，例如 `output/600519_sh_贵州茅台/`，极大地方便了多品种管理。
-- **元数据缓存**: 首次解析的资产名称会缓存至 `data/raw/security_names.json`，后续运行将优先读取缓存，避免重复调用 Wind API。
+- **元数据缓存**: 首次解析的资产名称会缓存至 `data/security_names.json`，后续运行将优先读取缓存，避免重复调用 Wind API。
 
 ## 📂 项目结构
 
@@ -85,7 +85,7 @@ echo "" | uv run run_pipeline.py
 tl-fractal/
 ├── data/
 │   ├── raw/                 # 存放原始 Excel/CSV 数据文件
-│   │   └── security_names.json # [NEW] 资产名称本地缓存 (避免重复调用 API)
+│   ├── security_names.json  # [NEW] 资产名称本地缓存 (避免重复调用 API)
 │   └── processed/           # 存放处理过程中的 CSV（按 ticker_name 分类）
 │       ├── tl_30年期国债期货/
 │       └── 600519_sh_贵州茅台/

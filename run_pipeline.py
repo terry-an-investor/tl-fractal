@@ -94,7 +94,7 @@ def select_file_interactive() -> list[str]:
         # 读取名称缓存
         import json
         cache_data = {}
-        cache_file = DATA_RAW_DIR / "security_names.json"
+        cache_file = Path("data") / "security_names.json"
         if cache_file.exists():
             try:
                 with open(cache_file, 'r', encoding='utf-8') as f:
@@ -118,30 +118,9 @@ def select_file_interactive() -> list[str]:
                 # 从文件名还原 symbol
                 symbol = f.stem.replace('_', '.')
                 
-                # 1. 尝试从缓存读取
+                # 只从缓存读取，不再调用 Wind API
                 if symbol in cache_data:
                      comment = f"[{cache_data[symbol]}]"
-                
-                # 2. 如果缓存没有，才使用 API 并尝试实例化适配器
-                else:
-                    try:
-                        if wind_adapter is None:
-                            from src.io.adapters.wind_api_adapter import WindAPIAdapter
-                            wind_adapter = WindAPIAdapter()
-                        
-                        name = wind_adapter.get_security_name(symbol)
-                        if name != symbol:
-                            comment = f"[{name}]"
-                            
-                            # 更新缓存并保存
-                            cache_data[symbol] = name
-                            try:
-                                with open(cache_file, 'w', encoding='utf-8') as f:
-                                    json.dump(cache_data, f, ensure_ascii=False, indent=2)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
             
             print(f"  [{current_idx}] {f.name:<20} {comment} ({size_kb:.1f} KB)")
             current_idx += 1

@@ -163,7 +163,7 @@ def main():
                 # --------------------------------------------------------
                 import json
                 
-                cache_file = Path(args.output) / "security_names.json"
+                cache_file = Path("data") / "security_names.json"
                 cache_data = {}
                 
                 # 读取现有缓存

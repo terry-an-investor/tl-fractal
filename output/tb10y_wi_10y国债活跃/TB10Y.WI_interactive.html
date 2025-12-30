@@ -208,17 +208,17 @@
             candlestickSeries.setMarkers(markersData);
         }
 
-        // 笔连线 (使用 Line Series)
-        if (strokesData.length > 0) {
-            const strokeSeries = chart.addLineSeries({
-                color: '#9c27b0',
-                lineWidth: 2,
-                crosshairMarkerVisible: false,
-                lastValueVisible: false,
-                priceLineVisible: false,
-            });
-            strokeSeries.setData(strokesData);
-        }
+        // 笔连线 (已禁用，如需启用请取消注释)
+        // if (strokesData.length > 0) {
+        //     const strokeSeries = chart.addLineSeries({
+        //         color: '#9c27b0',
+        //         lineWidth: 2,
+        //         crosshairMarkerVisible: false,
+        //         lastValueVisible: false,
+        //         priceLineVisible: false,
+        //     });
+        //     strokeSeries.setData(strokesData);
+        // }
 
         // 技术指标线
         const legendContainer = document.getElementById('legend');

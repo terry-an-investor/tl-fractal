@@ -102,7 +102,7 @@ class StandardAdapter(DataAdapter):
         else:
             # 1. 尝试从本地缓存读取名称 (避免 API 调用)
             import json
-            cache_file = path.parent / "security_names.json"
+            cache_file = Path("data") / "security_names.json"
             if cache_file.exists():
                 try:
                     with open(cache_file, 'r', encoding='utf-8') as f:
@@ -111,30 +111,7 @@ class StandardAdapter(DataAdapter):
                             name = cache[symbol]
                 except Exception:
                     pass
-            
-            # 2. 如果缓存中没有，且名称仍为 symbol，尝试通过 Wind API 获取
-            if name == symbol:
-                try:
-                    from .wind_api_adapter import WindAPIAdapter
-                    adapter = WindAPIAdapter()
-                    name = adapter.get_security_name(symbol)
-                    
-                    # 更新缓存 (如果解析成功)
-                    if name != symbol:
-                        try:
-                            if cache_file.exists():
-                                with open(cache_file, 'r', encoding='utf-8') as f:
-                                    cache = json.load(f)
-                            else:
-                                cache = {}
-                                
-                            cache[symbol] = name
-                            with open(cache_file, 'w', encoding='utf-8') as f:
-                                json.dump(cache, f, ensure_ascii=False, indent=2)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
+            # 不再调用 Wind API 获取名称，只使用缓存
         
         return OHLCData(
             df=df,
