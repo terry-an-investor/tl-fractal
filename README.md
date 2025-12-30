@@ -73,8 +73,11 @@ uv run run_pipeline.py data/raw/TL.CFE.xlsx
 echo "" | uv run run_pipeline.py
 ```
 
-### 4. 选择输入
-程序启动后会扫描 `data/raw` 目录下的 `.xlsx` / `.csv` 文件，并按来源 (Wind API / 用户提供) 分组显示。支持输入多个序号进行批量处理。
+### 4. 选择输入与输出
+- **智能识别**: 程序启动后会扫描 `data/raw` 目录下的文件。支持识别标准 Wind 命名格式（如 `600519_SH.xlsx`），即使该代码不在配置列表中，也会自动归类并尝试解析中文名。
+- **批量处理**: 支持输入多个序号（用空格或逗号分隔）进行顺序处理。
+- **描述性目录**: 运行结果将保存在以 `代码_名称` 命名的子目录中，例如 `output/600519_sh_贵州茅台/`，极大地方便了多品种管理。
+- **元数据缓存**: 首次解析的资产名称会缓存至 `data/raw/security_names.json`，后续运行将优先读取缓存，避免重复调用 Wind API。
 
 ## 📂 项目结构
 
@@ -82,12 +85,13 @@ echo "" | uv run run_pipeline.py
 tl-fractal/
 ├── data/
 │   ├── raw/                 # 存放原始 Excel/CSV 数据文件
-│   └── processed/           # 存放处理过程中的 CSV（按 ticker 分类）
-│       ├── tl/              # TL.CFE 相关数据
-│       └── tb10y/           # TB10Y.WI 相关数据
-├── output/                  # 生成的图表结果（按 ticker 分类）
-│   ├── tl/
-│   └── tb10y/
+│   │   └── security_names.json # [NEW] 资产名称本地缓存 (避免重复调用 API)
+│   └── processed/           # 存放处理过程中的 CSV（按 ticker_name 分类）
+│       ├── tl_30年期国债期货/
+│       └── 600519_sh_贵州茅台/
+├── output/                  # 生成的图表结果（按 ticker_name 分类）
+│   ├── tl_30年期国债期货/
+│   └── 600519_sh_贵州茅台/
 ├── src/
 │   ├── analysis/            # 核心分析逻辑
 │   │   ├── fractals.py      # 分型与笔识别算法 (MIN_DIST=4)
@@ -142,15 +146,16 @@ MIN_DIST = 4  # 顶底分型中间K线索引差至少为4（即中间隔3根，�
 
 ## 📋 最近更新 (2025-12-30)
 
-- **Wind API 集成**: 新增 `fetch_data.py` 和 `WindAPIAdapter`，支持自动获取 2 年历史数据。
-- **流水线增强**:
-  - `run_pipeline.py` 支持**多文件选择** (输入 `1 2 3`)。
-  - 自动识别 API 获取的数据并显示中文名称。
-  - 新增 `StandardAdapter` 处理无表头或标准格式数据。
+- **动态代码获取**: `fetch_data.py` 和 `WindAPIAdapter` 现在支持获取**任意**代码 (股票/基金/指数等)，无需预先配置。
+- **智能名称解析与缓存**:
+  - 自动调用 `w.wss` 解析资产中文名。
+  - 新增 `security_names.json` 缓存机制，保护 Wind API 调用额度，提升启动速度。
+- **目录结构优化**: 输出目录由单纯的代码变更为 `代码_名称` 格式（如 `600415_sh_小商品城`），更具可读性。
+- **流水线 UI 增强**:
+  - `run_pipeline.py` 菜单支持实时/缓存名称预览。
+  - 支持**多文件选择** (输入 `1 2 3`) 及按来源自动分组。
 - **交互式图表**:
-  - 标题显示: `Ticker Name [Symbol]`。
+  - 标题格式优化为: `资产名称 [Symbol]`。
   - OHLC 数值精度: 统一保留 **2位小数**。
-  - 修复布局警告。
-- **笔有效性验证**: 验证每笔终点是否为区间内真正极值，无效笔回溯处理。
-- **默认运行模式**: 非交互模式下自动使用 TB10Y.WI.xlsx 作为默认数据文件。
-- **技术指标模块**: 新增 `indicators.py`，支持 EMA、SMA、Bollinger Bands 计算。
+- **技术指标模块**: 新增 `indicators.py`，基础支持 EMA、SMA、Bollinger Bands。
+- **稳定性**: 修复了 Matplotlib `Tight layout` 警告并优化了笔有效性验证逻辑。

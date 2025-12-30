@@ -207,16 +207,32 @@ def main(input_file: str):
     DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     
-    # 从输入文件名生成输出文件名和子目录
+    # Step 1: 加载数据 (提前到这里以便使用数据中的名称来创建目录)
+    print(f"\n[Step 1/4] 加载数据: {input_file}")
+    from src.io import load_ohlc
+    data = load_ohlc(input_file)
+    print(f"  加载完成: {data}")
+    print(f"  日期范围: {data.date_range[0].date()} ~ {data.date_range[1].date()}")
+
+    # 从输入文件名生成基本文件名 (用于文件命名)
     input_path = Path(input_file)
     base_name = input_path.stem  # 不含扩展名的文件名，如 "TL.CFE"
     
-    # 提取ticker作为子目录名（取第一个点之前的部分，转小写）
-    ticker = base_name.split('.')[0].lower()  # "TL.CFE" -> "tl"
+    # 构建输出目录名称: Code_Name (e.g., 000510_SH_中证A500)
+    # 替换名称中的非法字符
+    import re
+    safe_name = re.sub(r'[\\/*?:"<>|]', '_', data.name)
+    safe_symbol = data.symbol.replace('.', '_')
+    
+    # 如果 symbol 和 name 相同，只用 symbol，否则 symbol_name
+    if safe_name == safe_symbol or safe_name == data.symbol:
+        dir_name = safe_symbol.lower()
+    else:
+        dir_name = f"{safe_symbol}_{safe_name}".lower() # 保持小写风格，虽然中文不会变小写
     
     # 创建ticker子目录
-    ticker_processed_dir = DATA_PROCESSED_DIR / ticker
-    ticker_output_dir = OUTPUT_DIR / ticker
+    ticker_processed_dir = DATA_PROCESSED_DIR / dir_name
+    ticker_output_dir = OUTPUT_DIR / dir_name
     ticker_processed_dir.mkdir(parents=True, exist_ok=True)
     ticker_output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -226,13 +242,6 @@ def main(input_file: str):
     strokes_csv = ticker_processed_dir / f"{base_name}_strokes.csv"
     merged_plot = ticker_output_dir / f"{base_name}_merged_kline.png"
     strokes_plot = ticker_output_dir / f"{base_name}_strokes.png"
-    
-    # Step 1: 加载数据
-    print(f"\n[Step 1/4] 加载数据: {input_file}")
-    from src.io import load_ohlc
-    data = load_ohlc(input_file)
-    print(f"  加载完成: {data}")
-    print(f"  日期范围: {data.date_range[0].date()} ~ {data.date_range[1].date()}")
     
     # Step 2: 处理原始数据，添加K线状态
     print(f"\n[Step 2/4] 添加 K 线状态标签...")

@@ -16,6 +16,7 @@ graph TB
     subgraph "📂 data/raw/"
         RAW_API[("Wind API Data<br/>(*.xlsx)")]
         RAW_USER[("User Data<br/>(*.xlsx/csv)")]
+        CACHE[("security_names.json<br/>(Cache)")]
     end
     
     subgraph "📦 src/io/"
@@ -32,9 +33,11 @@ graph TB
         CONFIG -.-> FETCH
         CONFIG -.-> STD_ADAPTER
         
+        WIND_ADAPTER --Name Lookup--> CACHE
         WIND_ADAPTER --Saves--> RAW_API
         
         RAW_API --> STD_ADAPTER
+        CACHE -.-> STD_ADAPTER
         RAW_USER --> CFE_ADAPTER
         
         STD_ADAPTER --> SCHEMA
@@ -135,16 +138,20 @@ sequenceDiagram
         alt is standard/api file
             IO->>IO: StandardAdapter.load()
             IO->>IO: data_config.get_config() [Name Lookup]
+            IO->>IO: security_names.json [Cache Lookup]
+            OPTIONAL: IO->>IO: WindAPIAdapter.get_security_name() [API Fallback]
         else is legacy file
             IO->>IO: WindCFEAdapter.load()
         end
-        IO-->>Pipeline: OHLCData 对象
+        IO-->>Pipeline: OHLCData 对象 (Symbol & Name)
         
         Note over Pipeline: Step 2: K线状态分类
         Pipeline->>Analysis: process_and_save()
+        Analysis-->>Output: (Saved to data/processed/code_name/)
         
         Note over Pipeline: Step 3: K线合并
         Pipeline->>Analysis: apply_kline_merging()
+        Analysis-->>Output: (Saved to output/code_name/)
         
         Note over Pipeline: Step 4: 分型与笔识别
         Pipeline->>Analysis: process_strokes()
@@ -221,9 +228,9 @@ graph LR
 
 | 阶段 | 输入 | 下游/适配器 | 输出 | 说明 |
 |------|------|-------------|------|------|
-| **获取** | Wind Terminal | `WindAPIAdapter` | `*.xlsx` (Standard) | 包含 datetime, open, high, low, close |
-| **加载** | xlsx/csv | `StandardAdapter` | `OHLCData` | 优先使用 StandardAdapter，支持从配置加载中文名称 |
+| **获取** | Wind Terminal | `WindAPIAdapter` | `*.xlsx` (Standard) | 自动解析名称并缓存至 `security_names.json` |
+| **加载** | xlsx/csv | `StandardAdapter` | `OHLCData` | 优先读取缓存名称，支持 `Symbol_Name` 目录分配 |
 | **加载(旧)**| xlsx/csv | `WindCFEAdapter` | `OHLCData` | 兼容旧版 Wind 导出格式 |
-| **状态标记** | `OHLCData` | `process_ohlc` | `*_processed.csv` | 标记 K 线涨跌趋势 (INITIAL/TREND_UP/DOWN) |
-| **合并** | processed.csv | `merging` | `*_merged.csv` | 处理包含关系，去除中间噪音 |
+| **状态标记** | `OHLCData` | `process_ohlc` | `*_processed.csv` | 保存至 `processed/code_name/` 目录下 |
+| **合并** | processed.csv | `merging` | `*_merged.csv` | 绘制图表保存至 `output/code_name/` 目录下 |
 | **分型** | merged.csv | `fractals` | `*_strokes.csv` | 识别顶底分型，应用 MIN_DIST=4 过滤 |
