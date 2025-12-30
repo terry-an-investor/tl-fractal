@@ -139,7 +139,7 @@ sequenceDiagram
             IO->>IO: StandardAdapter.load()
             IO->>IO: data_config.get_config() [Name Lookup]
             IO->>IO: security_names.json [Cache Lookup]
-            OPTIONAL: IO->>IO: WindAPIAdapter.get_security_name() [API Fallback]
+            IO->>IO: WindAPIAdapter.get_security_name() [Optional Fallback]
         else is legacy file
             IO->>IO: WindCFEAdapter.load()
         end
