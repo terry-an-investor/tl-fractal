@@ -6,8 +6,3 @@ __pycache__/
 # Virtual environments
 .venv
 
-# Data files (user-specific)
-data/
-
-# Output files (generated)
-output/

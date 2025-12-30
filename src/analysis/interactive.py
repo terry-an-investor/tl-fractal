@@ -22,14 +22,16 @@ def plot_interactive_kline(df: pd.DataFrame,
     
     # 1. 创建 K 线图 Traces
     candlestick = go.Candlestick(
-        x=df.index,  # 使用索引作为X轴，避免非交易日空隙
+        x=df['datetime'],  # 使用 datetime 作为 X 轴
         open=df['open'],
         high=df['high'],
         low=df['low'],
         close=df['close'],
         name='K线',
         text=hover_text,
-        hoverinfo='text'
+        hoverinfo='text',
+        increasing_line_color='#26a69a',  # 上涨颜色
+        decreasing_line_color='#ef5350'   # 下跌颜色
     )
     
     # 3. 收集分型和笔的数据
@@ -54,12 +56,16 @@ def plot_interactive_kline(df: pd.DataFrame,
             curr_price = df['low'].iloc[curr_idx]
             next_price = df['high'].iloc[next_idx]
             
+            # 获取对应的 datetime
+            curr_datetime = df['datetime'].iloc[curr_idx]
+            next_datetime = df['datetime'].iloc[next_idx]
+            
             # 添加线段起点(B)
-            stroke_x.append(curr_idx)
+            stroke_x.append(curr_datetime)
             stroke_y.append(curr_price)
             
             # 添加线段终点(T)
-            stroke_x.append(next_idx)
+            stroke_x.append(next_datetime)
             stroke_y.append(next_price)
             
             # 添加断点(None)，使每条 B->T 独立
@@ -73,26 +79,26 @@ def plot_interactive_kline(df: pd.DataFrame,
             
         if f_type == 'T':
             price = df['high'].iloc[idx]
-            # stroke_x/y 的收集逻辑已移出
+            datetime_val = df['datetime'].iloc[idx]
             # 添加顶分型标注
             annotations.append(dict(
-                x=idx, y=price,
+                x=datetime_val, y=price,
                 text=f"T {price:.2f}",
                 showarrow=False,
                 yshift=10,
-                font=dict(color='black', size=10, family='Arial Black')
+                font=dict(color='#ef5350', size=10, family='Arial Black')
             ))
             
         elif f_type == 'B':
             price = df['low'].iloc[idx]
-            # stroke_x/y 的收集逻辑已移出
+            datetime_val = df['datetime'].iloc[idx]
             # 添加底分型标注
             annotations.append(dict(
-                x=idx, y=price,
+                x=datetime_val, y=price,
                 text=f"B {price:.2f}",
                 showarrow=False,
                 yshift=-10,
-                font=dict(color='blue', size=10, family='Arial Black')
+                font=dict(color='#26a69a', size=10, family='Arial Black')
             ))
     
     # 5. 创建笔连线 Trace
@@ -100,7 +106,7 @@ def plot_interactive_kline(df: pd.DataFrame,
         x=stroke_x,
         y=stroke_y,
         mode='lines',
-        line=dict(color='purple', width=1.5),
+        line=dict(color='#9c27b0', width=1.5),
         name='笔',
         hoverinfo='skip'
     )
@@ -110,15 +116,13 @@ def plot_interactive_kline(df: pd.DataFrame,
     fig = go.Figure(data=[candlestick, stroke_trace])
     
     # 7. 配置 Layout
-    dates = df['datetime'].dt.strftime('%Y-%m-%d').tolist()
-    
     fig.update_layout(
         title=f'Fractal Analysis - {df.iloc[0]["symbol"] if "symbol" in df.columns else ""}',
         yaxis_title='Price',
         xaxis_title='Date',
         dragmode='zoom', # 默认缩放模式
         hovermode='x unified',
-        template='plotly_white',
+        template='plotly_dark',  # 使用深色模板，rangeslider 对比度更好
         height=700,
         margin=dict(l=50, r=50, t=80, b=50),
         
@@ -130,7 +134,7 @@ def plot_interactive_kline(df: pd.DataFrame,
             autorange=True,      # 自动缩放
             fixedrange=False,    # 允许手动缩放（在价格轴上拖拽）
             side='right',        # 价格显示在右侧
-            gridcolor='#F0F0F0',
+            gridcolor='#2A2A2A',
             zeroline=False,
             exponentformat='none',
             # 增加一个微小的 rangemode，防止 K 线贴着上下边缘
@@ -139,22 +143,22 @@ def plot_interactive_kline(df: pd.DataFrame,
         
         # X 轴设置
         xaxis=dict(
-            type='linear',
-            tickmode='array',
-            tickvals=list(range(0, len(dates), max(1, len(dates)//20))), 
-            ticktext=[dates[i] for i in range(0, len(dates), max(1, len(dates)//20))],
-            gridcolor='#F0F0F0',
+            type='date',  # 使用 date 类型，自动处理日期格式
+            gridcolor='#2A2A2A',
             
-            # 滑块设置：精细化样式
+            # 滑块设置
+            # 注意：Plotly 的 rangeslider 默认行为是未选中区域显示为浅色，选中区域显示为深色
+            # 这与用户期望相反，但 Plotly 不支持反转此行为
+            # 使用深色模板可以改善对比度，但仍建议使用鼠标滚轮缩放和拖拽来导航
             rangeslider=dict(
                 visible=True,
-                thickness=0.1,      # 稍微加高一点，让波形更清楚
-                bgcolor='#FFFFFF',  # 显式白背景，解决“未选中区域变灰”的问题
-                bordercolor='#DEDEDE',
+                thickness=0.08,
+                bordercolor='#444444',
                 borderwidth=1,
-                yaxis=dict(rangemode='match') # 恢复 match，但在白背景下应该表现更好，或者去掉
+                yaxis=dict(rangemode='match')
             ),
-            range=[max(0, len(df)-120), len(df)] # 默认显示最后120根
+            # 默认显示最后120根K线
+            range=[df['datetime'].iloc[max(0, len(df)-120)], df['datetime'].iloc[-1]]
         )
     )
     
