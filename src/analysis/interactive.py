@@ -60,6 +60,18 @@ class ChartBuilder:
         # 确保 datetime 列存在且是 datetime 类型
         if 'datetime' in self.df.columns:
             self.df['datetime'] = pd.to_datetime(self.df['datetime'])
+        
+        # 动态检测价格精度 (根据数据的实际小数位数)
+        self.precision = self._detect_precision()
+    
+    def _detect_precision(self, max_decimals=4, min_decimals=2) -> int:
+        """检测数据需要的最小精度"""
+        series = self.df['close']
+        for decimals in range(min_decimals, max_decimals + 1):
+            rounded = series.round(decimals)
+            if (series - rounded).abs().max() < 1e-9:
+                return decimals
+        return max_decimals
     
     def _timestamp(self, dt) -> int:
         """将 datetime 转换为 Unix 时间戳 (秒)"""
@@ -187,7 +199,7 @@ class ChartBuilder:
                     'position': 'aboveBar',
                     'color': '#9e9e9e' if is_cancelled else '#ef5350',  # 灰色 vs 红色
                     'shape': 'arrowDown',
-                    'text': f'Tx' if is_cancelled else f'T {price:.2f}'
+                    'text': f'Tx' if is_cancelled else f'T {price:.{self.precision}f}'
                 })
             elif base_type == 'B':
                 price = float(row['low'])
@@ -196,7 +208,7 @@ class ChartBuilder:
                     'position': 'belowBar',
                     'color': '#9e9e9e' if is_cancelled else '#26a69a',  # 灰色 vs 绿色
                     'shape': 'arrowUp',
-                    'text': f'Bx' if is_cancelled else f'B {price:.2f}'
+                    'text': f'Bx' if is_cancelled else f'B {price:.{self.precision}f}'
                 })
         
         return self
@@ -212,6 +224,18 @@ class ChartBuilder:
         if title is None:
             symbol = self.df['symbol'].iloc[0] if 'symbol' in self.df.columns else ''
             title = f'Fractal Analysis - {symbol}'
+        
+        # 动态检测价格精度 (根据数据的实际小数位数)
+        # 检测 close 列的小数位数来决定精度
+        def detect_precision(series, max_decimals=4, min_decimals=2):
+            """检测数据需要的最小精度"""
+            for decimals in range(min_decimals, max_decimals + 1):
+                rounded = series.round(decimals)
+                if (series - rounded).abs().max() < 1e-9:
+                    return decimals
+            return max_decimals
+        
+        precision = detect_precision(self.df['close'])
         
         # 序列化数据为 JSON
         candlestick_json = json.dumps(self.candlestick_data)
@@ -327,6 +351,7 @@ class ChartBuilder:
         const indicators = {indicators_json};
         const strokesData = {strokes_json};
         const markersData = {markers_json};
+        const pricePrecision = {precision}; // 动态精度
 
         // 创建图表
         const container = document.getElementById('chart-container');
@@ -504,7 +529,7 @@ class ChartBuilder:
                     indicatorHtml += `
                         <div class="ohlc-item">
                             <span class="ohlc-label">${{indicator.name}}:</span>
-                            <span class="ohlc-value" style="color:${{indicator.color}}">${{found.value.toFixed(2)}}</span>
+                            <span class="ohlc-value" style="color:${{indicator.color}}">${{found.value.toFixed(pricePrecision)}}</span>
                         </div>
                     `;
                 }}
@@ -512,10 +537,10 @@ class ChartBuilder:
 
             ohlcPanel.innerHTML = `
                 <span class="ohlc-date">${{dateStr}}</span>
-                <div class="ohlc-item"><span class="ohlc-label">O:</span><span class="ohlc-value ${{changeClass}}">${{data.open.toFixed(2)}}</span></div>
-                <div class="ohlc-item"><span class="ohlc-label">H:</span><span class="ohlc-value ${{changeClass}}">${{data.high.toFixed(2)}}</span></div>
-                <div class="ohlc-item"><span class="ohlc-label">L:</span><span class="ohlc-value ${{changeClass}}">${{data.low.toFixed(2)}}</span></div>
-                <div class="ohlc-item"><span class="ohlc-label">C:</span><span class="ohlc-value ${{changeClass}}">${{data.close.toFixed(2)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">O:</span><span class="ohlc-value ${{changeClass}}">${{data.open.toFixed(pricePrecision)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">H:</span><span class="ohlc-value ${{changeClass}}">${{data.high.toFixed(pricePrecision)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">L:</span><span class="ohlc-value ${{changeClass}}">${{data.low.toFixed(pricePrecision)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">C:</span><span class="ohlc-value ${{changeClass}}">${{data.close.toFixed(pricePrecision)}}</span></div>
                 <div class="ohlc-item"><span class="ohlc-value ${{changeClass}}">${{changeSign}}${{changePercent}}%</span></div>
                 ${{indicatorHtml}}
             `;

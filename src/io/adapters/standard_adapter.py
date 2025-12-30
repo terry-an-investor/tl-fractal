@@ -80,6 +80,15 @@ class StandardAdapter(DataAdapter):
         # 按日期排序
         df = df.sort_values(COL_DATETIME).reset_index(drop=True)
         
+        # --------------------------------------------------------
+        # 处理缺失的 open 列 (常见于利率/指数数据)
+        # 策略: 用前一日的 close 填充当日 open，首日用当日 close
+        # --------------------------------------------------------
+        if COL_OPEN in df.columns and df[COL_OPEN].isna().any():
+            df[COL_OPEN] = df[COL_OPEN].fillna(df[COL_CLOSE].shift(1))
+            # 首日无前一日数据，用当日 close 填充
+            df[COL_OPEN] = df[COL_OPEN].fillna(df[COL_CLOSE])
+        
         # 尝试从文件名推断 symbol
         symbol = path.stem.replace("_", ".")
         

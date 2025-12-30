@@ -53,12 +53,7 @@ DATA_SOURCES: list[DataConfig] = [
         trading_calendar="",  # 使用 Wind 默认 (通常是 CFFE 或跟随品种)
         description="CFFEX 30年期国债期货主力合约",
     ),
-    DataConfig(
-        symbol="TB10Y.WI",
-        name="10年期国债收益率",
-        trading_calendar="SSE",
-        description="Wind 10年期国债收益率指数",
-    ),
+    # TB10Y.WI 已移除: Wind API 不支持 open 字段，请使用手动下载的数据
     
     # 新增数据
     DataConfig(
