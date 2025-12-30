@@ -1,180 +1,571 @@
-import plotly.graph_objects as go
-import pandas as pd
-from typing import List, Tuple
+"""
+interactive.py
+交互式 K 线图表模块 (TradingView Lightweight Charts)
 
-def plot_interactive_kline(df: pd.DataFrame, 
-                         strokes: List[Tuple[int, str]], 
-                         save_path: str = None):
+使用 TradingView 的开源 Lightweight Charts 库生成专业级交互式图表，支持：
+- K 线蜡烛图 (专业 TradingView 风格)
+- 技术指标叠加 (EMA, SMA, etc.)
+- 笔连线和分型标注
+- 内置 Crosshair、时间轴导航
+- 自动 Y 轴缩放
+"""
+
+import json
+import pandas as pd
+from typing import List, Tuple, Optional
+from pathlib import Path
+
+
+# 预定义的指标颜色映射
+INDICATOR_COLORS = {
+    'ema5': '#FF6B6B',
+    'ema10': '#4ECDC4',
+    'ema20': '#FFA500',
+    'ema50': '#45B7D1',
+    'ema200': '#96CEB4',
+    'sma5': '#FFEAA7',
+    'sma10': '#DFE6E9',
+    'sma20': '#74B9FF',
+}
+
+
+class ChartBuilder:
     """
-    绘制交互式 K 线图 (Plotly)
+    交互式图表构建器 (TradingView Lightweight Charts)
+    
+    使用链式调用模式构建图表：
+    
+    Example:
+        chart = ChartBuilder(df)
+        chart.add_candlestick()
+        chart.add_indicator('EMA20', df['ema20'], '#FFA500')
+        chart.add_strokes(stroke_list)
+        chart.add_fractal_markers(stroke_list)
+        chart.build('output/chart.html')
+    """
+    
+    def __init__(self, df: pd.DataFrame):
+        """
+        初始化图表构建器
+        
+        Args:
+            df: 包含 datetime, open, high, low, close 的 DataFrame
+        """
+        self.df = df.copy()
+        self.candlestick_data = []
+        self.indicators = []  # [(name, data, color), ...]
+        self.stroke_lines = []  # 笔的线段数据
+        self.markers = []  # 标记点数据
+        
+        # 确保 datetime 列存在且是 datetime 类型
+        if 'datetime' in self.df.columns:
+            self.df['datetime'] = pd.to_datetime(self.df['datetime'])
+    
+    def _timestamp(self, dt) -> int:
+        """将 datetime 转换为 Unix 时间戳 (秒)"""
+        return int(pd.Timestamp(dt).timestamp())
+    
+    def add_candlestick(self) -> 'ChartBuilder':
+        """
+        添加 K 线蜡烛图层
+        
+        Returns:
+            self: 支持链式调用
+        """
+        for _, row in self.df.iterrows():
+            self.candlestick_data.append({
+                'time': self._timestamp(row['datetime']),
+                'open': float(row['open']),
+                'high': float(row['high']),
+                'low': float(row['low']),
+                'close': float(row['close']),
+            })
+        return self
+    
+    def add_indicator(
+        self, 
+        name: str, 
+        series: pd.Series, 
+        color: Optional[str] = None,
+        line_width: int = 2
+    ) -> 'ChartBuilder':
+        """
+        添加技术指标线
+        
+        Args:
+            name: 指标名称 (如 'EMA20')
+            series: 指标数据序列
+            color: 线条颜色，None 则自动选择
+            line_width: 线条宽度
+        
+        Returns:
+            self: 支持链式调用
+        """
+        if color is None:
+            color = INDICATOR_COLORS.get(name.lower(), '#FFFFFF')
+        
+        data = []
+        for i, (_, row) in enumerate(self.df.iterrows()):
+            value = series.iloc[i]
+            if pd.notna(value):
+                data.append({
+                    'time': self._timestamp(row['datetime']),
+                    'value': float(value)
+                })
+        
+        self.indicators.append({
+            'name': name,
+            'data': data,
+            'color': color,
+            'lineWidth': line_width
+        })
+        return self
+    
+    def add_strokes(self, strokes: List[Tuple[int, str]]) -> 'ChartBuilder':
+        """
+        添加笔连线
+        
+        Args:
+            strokes: 分型标记列表 [(index, 'T'|'B'), ...]
+                     注意：只接受纯 'T' 或 'B'，忽略 'Tx', 'Bx' 等
+        
+        Returns:
+            self: 支持链式调用
+        """
+        if not strokes:
+            return self
+        
+        # 【关键】只筛选有效的 T 和 B (忽略 Tx, Bx 等被替换的分型)
+        valid_strokes = [
+            (idx, f_type) for idx, f_type in strokes 
+            if f_type in ('T', 'B')
+        ]
+        
+        if not valid_strokes:
+            return self
+        
+        # 按索引排序
+        sorted_strokes = sorted(valid_strokes, key=lambda x: x[0])
+        
+        # 构建笔的线段数据
+        stroke_data = []
+        for idx, f_type in sorted_strokes:
+            if idx < 0 or idx >= len(self.df):
+                continue
+            row = self.df.iloc[idx]
+            price = float(row['high']) if f_type == 'T' else float(row['low'])
+            stroke_data.append({
+                'time': self._timestamp(row['datetime']),
+                'value': price
+            })
+        
+        self.stroke_lines = stroke_data
+        return self
+    
+    def add_fractal_markers(self, fractals: List[Tuple[int, str]]) -> 'ChartBuilder':
+        """
+        添加顶底分型标记
+        
+        Args:
+            fractals: 分型标记列表 [(index, 'T'|'B'), ...]
+        
+        Returns:
+            self: 支持链式调用
+        """
+        # 【关键】只筛选有效的 T 和 B
+        valid_fractals = [
+            (idx, f_type) for idx, f_type in fractals 
+            if f_type in ('T', 'B')
+        ]
+        
+        for idx, f_type in valid_fractals:
+            if idx < 0 or idx >= len(self.df):
+                continue
+            
+            row = self.df.iloc[idx]
+            if f_type == 'T':
+                price = float(row['high'])
+                self.markers.append({
+                    'time': self._timestamp(row['datetime']),
+                    'position': 'aboveBar',
+                    'color': '#ef5350',
+                    'shape': 'arrowDown',
+                    'text': f'T {price:.2f}'
+                })
+            elif f_type == 'B':
+                price = float(row['low'])
+                self.markers.append({
+                    'time': self._timestamp(row['datetime']),
+                    'position': 'belowBar',
+                    'color': '#26a69a',
+                    'shape': 'arrowUp',
+                    'text': f'B {price:.2f}'
+                })
+        
+        return self
+    
+    def build(self, save_path: str, title: Optional[str] = None) -> None:
+        """
+        组装并保存为 HTML
+        
+        Args:
+            save_path: HTML 文件保存路径
+            title: 图表标题
+        """
+        if title is None:
+            symbol = self.df['symbol'].iloc[0] if 'symbol' in self.df.columns else ''
+            title = f'Fractal Analysis - {symbol}'
+        
+        # 序列化数据为 JSON
+        candlestick_json = json.dumps(self.candlestick_data)
+        indicators_json = json.dumps(self.indicators)
+        strokes_json = json.dumps(self.stroke_lines)
+        markers_json = json.dumps(self.markers)
+        
+        html_content = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #131722;
+            color: #d1d4dc;
+        }}
+        .container {{
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }}
+        .header {{
+            padding: 12px 20px;
+            background: #1e222d;
+            border-bottom: 1px solid #2a2e39;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }}
+        .header h1 {{
+            font-size: 16px;
+            font-weight: 500;
+            color: #d1d4dc;
+        }}
+        .legend {{
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+        }}
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }}
+        .legend-color {{
+            width: 12px;
+            height: 3px;
+            border-radius: 1px;
+        }}
+        #chart-container {{
+            flex: 1;
+            width: 100%;
+        }}
+        .tooltip {{
+            position: absolute;
+            display: none;
+            padding: 8px 12px;
+            background: rgba(30, 34, 45, 0.95);
+            border: 1px solid #2a2e39;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+        }}
+        .tooltip-row {{
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            margin: 2px 0;
+        }}
+        .tooltip-label {{
+            color: #787b86;
+        }}
+        .tooltip-value {{
+            font-weight: 500;
+        }}
+        .tooltip-value.up {{
+            color: #26a69a;
+        }}
+        .tooltip-value.down {{
+            color: #ef5350;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{title}</h1>
+            <div class="legend" id="legend"></div>
+        </div>
+        <div id="chart-container"></div>
+    </div>
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // 数据
+        const candlestickData = {candlestick_json};
+        const indicators = {indicators_json};
+        const strokesData = {strokes_json};
+        const markersData = {markers_json};
+
+        // 创建图表
+        const container = document.getElementById('chart-container');
+        const chart = LightweightCharts.createChart(container, {{
+            layout: {{
+                background: {{ type: 'solid', color: '#131722' }},
+                textColor: '#d1d4dc',
+            }},
+            grid: {{
+                vertLines: {{ color: '#1e222d' }},
+                horzLines: {{ color: '#1e222d' }},
+            }},
+            crosshair: {{
+                mode: LightweightCharts.CrosshairMode.Normal,
+                vertLine: {{
+                    color: '#758696',
+                    width: 1,
+                    style: LightweightCharts.LineStyle.Dashed,
+                    labelBackgroundColor: '#2a2e39',
+                }},
+                horzLine: {{
+                    color: '#758696',
+                    width: 1,
+                    style: LightweightCharts.LineStyle.Dashed,
+                    labelBackgroundColor: '#2a2e39',
+                }},
+            }},
+            rightPriceScale: {{
+                borderColor: '#2a2e39',
+                scaleMargins: {{
+                    top: 0.1,
+                    bottom: 0.1,
+                }},
+            }},
+            timeScale: {{
+                borderColor: '#2a2e39',
+                timeVisible: true,
+                secondsVisible: false,
+            }},
+            handleScroll: {{
+                vertTouchDrag: false,
+            }},
+        }});
+
+        // K 线系列
+        const candlestickSeries = chart.addCandlestickSeries({{
+            upColor: '#26a69a',
+            downColor: '#ef5350',
+            borderUpColor: '#26a69a',
+            borderDownColor: '#ef5350',
+            wickUpColor: '#26a69a',
+            wickDownColor: '#ef5350',
+        }});
+        candlestickSeries.setData(candlestickData);
+
+        // 设置标记 (分型点)
+        if (markersData.length > 0) {{
+            candlestickSeries.setMarkers(markersData);
+        }}
+
+        // 笔连线 (使用 Line Series)
+        if (strokesData.length > 0) {{
+            const strokeSeries = chart.addLineSeries({{
+                color: '#9c27b0',
+                lineWidth: 2,
+                crosshairMarkerVisible: false,
+                lastValueVisible: false,
+                priceLineVisible: false,
+            }});
+            strokeSeries.setData(strokesData);
+        }}
+
+        // 技术指标线
+        const legendContainer = document.getElementById('legend');
+        indicators.forEach((indicator, index) => {{
+            const lineSeries = chart.addLineSeries({{
+                color: indicator.color,
+                lineWidth: indicator.lineWidth,
+                crosshairMarkerVisible: true,
+                lastValueVisible: false,
+                priceLineVisible: false,
+            }});
+            lineSeries.setData(indicator.data);
+
+            // 添加图例
+            const legendItem = document.createElement('div');
+            legendItem.className = 'legend-item';
+            legendItem.innerHTML = `
+                <div class="legend-color" style="background: ${{indicator.color}}"></div>
+                <span>${{indicator.name}}</span>
+            `;
+            legendContainer.appendChild(legendItem);
+        }});
+
+        // 添加笔图例
+        if (strokesData.length > 0) {{
+            const strokeLegend = document.createElement('div');
+            strokeLegend.className = 'legend-item';
+            strokeLegend.innerHTML = `
+                <div class="legend-color" style="background: #9c27b0"></div>
+                <span>笔</span>
+            `;
+            legendContainer.appendChild(strokeLegend);
+        }}
+
+        // Tooltip (悬浮信息)
+        const tooltip = document.getElementById('tooltip');
+        
+        chart.subscribeCrosshairMove((param) => {{
+            if (!param.time || !param.point) {{
+                tooltip.style.display = 'none';
+                return;
+            }}
+
+            const data = param.seriesData.get(candlestickSeries);
+            if (!data) {{
+                tooltip.style.display = 'none';
+                return;
+            }}
+
+            const date = new Date(param.time * 1000);
+            const dateStr = date.toISOString().split('T')[0];
+            
+            const change = data.close - data.open;
+            const changeClass = change >= 0 ? 'up' : 'down';
+            
+            // 获取指标值
+            let indicatorHtml = '';
+            indicators.forEach((indicator, index) => {{
+                const series = chart.getSeries()[index + 1]; // +1 因为第一个是 candlestick
+                // 简化：直接从数据中查找
+                const found = indicator.data.find(d => d.time === param.time);
+                if (found) {{
+                    indicatorHtml += `
+                        <div class="tooltip-row">
+                            <span class="tooltip-label">${{indicator.name}}</span>
+                            <span class="tooltip-value" style="color:${{indicator.color}}">${{found.value.toFixed(4)}}</span>
+                        </div>
+                    `;
+                }}
+            }});
+
+            tooltip.innerHTML = `
+                <div class="tooltip-row">
+                    <span class="tooltip-label">日期</span>
+                    <span class="tooltip-value">${{dateStr}}</span>
+                </div>
+                <div class="tooltip-row">
+                    <span class="tooltip-label">开</span>
+                    <span class="tooltip-value ${{changeClass}}">${{data.open.toFixed(4)}}</span>
+                </div>
+                <div class="tooltip-row">
+                    <span class="tooltip-label">高</span>
+                    <span class="tooltip-value ${{changeClass}}">${{data.high.toFixed(4)}}</span>
+                </div>
+                <div class="tooltip-row">
+                    <span class="tooltip-label">低</span>
+                    <span class="tooltip-value ${{changeClass}}">${{data.low.toFixed(4)}}</span>
+                </div>
+                <div class="tooltip-row">
+                    <span class="tooltip-label">收</span>
+                    <span class="tooltip-value ${{changeClass}}">${{data.close.toFixed(4)}}</span>
+                </div>
+                ${{indicatorHtml}}
+            `;
+
+            // 定位 tooltip
+            const x = param.point.x;
+            const y = param.point.y;
+            const containerRect = container.getBoundingClientRect();
+            
+            let left = x + 20;
+            let top = y + 20;
+            
+            // 防止超出边界
+            if (left + 180 > containerRect.width) {{
+                left = x - 180;
+            }}
+            if (top + 200 > containerRect.height) {{
+                top = y - 200;
+            }}
+
+            tooltip.style.display = 'block';
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = (top + containerRect.top) + 'px';
+        }});
+
+        // 自适应大小
+        const resizeObserver = new ResizeObserver(entries => {{
+            for (const entry of entries) {{
+                chart.applyOptions({{
+                    width: entry.contentRect.width,
+                    height: entry.contentRect.height,
+                }});
+            }}
+        }});
+        resizeObserver.observe(container);
+
+        // 初始显示最后 120 根 K 线
+        if (candlestickData.length > 120) {{
+            const from = candlestickData[candlestickData.length - 120].time;
+            const to = candlestickData[candlestickData.length - 1].time;
+            chart.timeScale().setVisibleRange({{ from, to }});
+        }}
+    </script>
+</body>
+</html>
+'''
+        
+        # 保存文件
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(save_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        print(f"交互式图表已保存至: {save_path}")
+
+
+# ============================================================
+# 向后兼容的函数接口
+# ============================================================
+
+def plot_interactive_kline(
+    df: pd.DataFrame, 
+    strokes: List[Tuple[int, str]], 
+    save_path: str = None
+) -> None:
+    """
+    绘制交互式 K 线图 - 向后兼容函数
     
     Args:
         df: 包含 datetime, open, high, low, close 的 DataFrame
         strokes: 分型标记 list of (index, type)，如 [(10, 'T'), (15, 'B')]
         save_path: HTML 保存路径
+    
+    Note:
+        此函数保留以兼容旧代码，新代码建议使用 ChartBuilder 类。
     """
+    chart = ChartBuilder(df)
+    chart.add_candlestick()
+    chart.add_strokes(strokes)
+    chart.add_fractal_markers(strokes)
     
-    #构造 Hover Text
-    hover_text = [
-        f"时间: {d.strftime('%Y-%m-%d')}<br>O: {o:.2f}<br>H: {h:.2f}<br>L: {l:.2f}<br>C: {c:.2f}"
-        for d, o, h, l, c in zip(df['datetime'], df['open'], df['high'], df['low'], df['close'])
-    ]
-    
-    # 1. 创建 K 线图 Traces
-    candlestick = go.Candlestick(
-        x=df['datetime'],  # 使用 datetime 作为 X 轴
-        open=df['open'],
-        high=df['high'],
-        low=df['low'],
-        close=df['close'],
-        name='K线',
-        text=hover_text,
-        hoverinfo='text',
-        increasing_line_color='#26a69a',  # 上涨颜色
-        decreasing_line_color='#ef5350'   # 下跌颜色
-    )
-    
-    # 3. 收集分型和笔的数据
-    annotations = []
-    
-    # 仅收集确认的分型用于连线
-    stroke_x = []
-    stroke_y = []
-    
-    # 按索引排序
-    sorted_strokes = sorted(strokes, key=lambda x: x[0])
-    
-    # 遍历分型，根据用户需求：只连接 B -> T (上涨笔)
-    # 不连接 T -> B
-    for i in range(len(sorted_strokes) - 1):
-        curr_idx, curr_type = sorted_strokes[i]
-        next_idx, next_type = sorted_strokes[i+1]
-        
-        # 仅当当前是底(B)且下一个是顶(T)时，画线
-        if curr_type == 'B' and next_type == 'T':
-            # 获取价格
-            curr_price = df['low'].iloc[curr_idx]
-            next_price = df['high'].iloc[next_idx]
-            
-            # 获取对应的 datetime
-            curr_datetime = df['datetime'].iloc[curr_idx]
-            next_datetime = df['datetime'].iloc[next_idx]
-            
-            # 添加线段起点(B)
-            stroke_x.append(curr_datetime)
-            stroke_y.append(curr_price)
-            
-            # 添加线段终点(T)
-            stroke_x.append(next_datetime)
-            stroke_y.append(next_price)
-            
-            # 添加断点(None)，使每条 B->T 独立
-            stroke_x.append(None)
-            stroke_y.append(None)
-    
-    # 重置遍历用于添加 Annotations，避免遗漏孤立点
-    for idx, f_type in sorted_strokes:
-        if idx < 0 or idx >= len(df):
-            continue
-            
-        if f_type == 'T':
-            price = df['high'].iloc[idx]
-            datetime_val = df['datetime'].iloc[idx]
-            # 添加顶分型标注
-            annotations.append(dict(
-                x=datetime_val, y=price,
-                text=f"T {price:.2f}",
-                showarrow=False,
-                yshift=10,
-                font=dict(color='#ef5350', size=10, family='Arial Black')
-            ))
-            
-        elif f_type == 'B':
-            price = df['low'].iloc[idx]
-            datetime_val = df['datetime'].iloc[idx]
-            # 添加底分型标注
-            annotations.append(dict(
-                x=datetime_val, y=price,
-                text=f"B {price:.2f}",
-                showarrow=False,
-                yshift=-10,
-                font=dict(color='#26a69a', size=10, family='Arial Black')
-            ))
-    
-    # 5. 创建笔连线 Trace
-    stroke_trace = go.Scatter(
-        x=stroke_x,
-        y=stroke_y,
-        mode='lines',
-        line=dict(color='#9c27b0', width=1.5),
-        name='笔',
-        hoverinfo='skip'
-    )
-    
-    # 6. 组装 Figure
-    # 注意：不包含文字 Trace，因为它们会弄乱 RangeSlider
-    fig = go.Figure(data=[candlestick, stroke_trace])
-    
-    # 7. 配置 Layout
-    fig.update_layout(
-        title=f'Fractal Analysis - {df.iloc[0]["symbol"] if "symbol" in df.columns else ""}',
-        yaxis_title='Price',
-        xaxis_title='Date',
-        dragmode='zoom', # 默认缩放模式
-        hovermode='x unified',
-        template='plotly_dark',  # 使用深色模板，rangeslider 对比度更好
-        height=700,
-        margin=dict(l=50, r=50, t=80, b=50),
-        
-        # 将文字标注作为布局的一部分添加到图中
-        annotations=annotations,
-
-        # Y 轴自适应与交互设置
-        yaxis=dict(
-            autorange=True,      # 自动缩放
-            fixedrange=False,    # 允许手动缩放（在价格轴上拖拽）
-            side='right',        # 价格显示在右侧
-            gridcolor='#2A2A2A',
-            zeroline=False,
-            exponentformat='none',
-            # 增加一个微小的 rangemode，防止 K 线贴着上下边缘
-            rangemode='normal'
-        ),
-        
-        # X 轴设置
-        xaxis=dict(
-            type='date',  # 使用 date 类型，自动处理日期格式
-            gridcolor='#2A2A2A',
-            
-            # 滑块设置
-            # 注意：Plotly 的 rangeslider 默认行为是未选中区域显示为浅色，选中区域显示为深色
-            # 这与用户期望相反，但 Plotly 不支持反转此行为
-            # 使用深色模板可以改善对比度，但仍建议使用鼠标滚轮缩放和拖拽来导航
-            rangeslider=dict(
-                visible=True,
-                thickness=0.08,
-                bordercolor='#444444',
-                borderwidth=1,
-                yaxis=dict(rangemode='match')
-            ),
-            # 默认显示最后120根K线
-            range=[df['datetime'].iloc[max(0, len(df)-120)], df['datetime'].iloc[-1]]
-        )
-    )
-    
-    # 启用鼠标滚轮缩放，并清理工具栏
-    config = dict({
-        'scrollZoom': True,           # 允许滚轮缩放
-        'displayModeBar': True,
-        'modeBarButtonsToRemove': ['lasso2d', 'select2d', 'autoScale2d'],
-        'displaylogo': False,
-        'doubleClick': 'reset+autosize', # 双击重置
-        'responsive': True
-    })
-
-
     if save_path:
-        # 强制更新所有 trace 不在 slider 中重复（虽然 plotly 对 scatter 较难完全控制）
-        # 但我们之前改用 annotations 已经解决了最大的文字乱入问题
-        fig.write_html(save_path, config=config)
-        print(f"交互式图表已保存至: {save_path}")
+        chart.build(save_path)

@@ -145,19 +145,17 @@ def main(input_file: str):
 
     # Step 5: 生成交互式图表
     print(f"\n[Step 5/5] 生成交互式 HTML 图表...")
-    from src.analysis import plot_interactive_kline
+    from src.analysis import ChartBuilder, compute_ema
     interactive_plot = ticker_output_dir / f"{base_name}_interactive.html"
     
     # 重新加载数据以获取绘图所需的DataFrame
     import pandas as pd
-    from src.io import load_ohlc
     
     # 注意：这里我们使用合并后的数据来画图，因为它更干净
     # 但strokes是基于合并后数据的索引，所以是对齐的
     merged_df = pd.read_csv(merged_csv)
     # 转换 datetime
     merged_df['datetime'] = pd.to_datetime(merged_df['datetime'])
-    merged_df.set_index('datetime', inplace=False) # 保持 DataFrame 结构
     
     # 读取 strokes
     strokes_df = pd.read_csv(strokes_csv)
@@ -168,7 +166,16 @@ def main(input_file: str):
         if pd.notna(row['valid_fractal'])
     ]
     
-    plot_interactive_kline(merged_df, stroke_list, str(interactive_plot))
+    # 计算技术指标
+    merged_df['ema20'] = compute_ema(merged_df, 20)
+    
+    # 使用 ChartBuilder 构建图表
+    chart = ChartBuilder(merged_df)
+    chart.add_candlestick()
+    chart.add_indicator('EMA20', merged_df['ema20'], '#FFA500')  # 橙色
+    chart.add_strokes(stroke_list)
+    chart.add_fractal_markers(stroke_list)
+    chart.build(str(interactive_plot))
     
     print("\n" + "=" * 60)
     print("流水线完成！")
