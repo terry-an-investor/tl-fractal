@@ -1,7 +1,7 @@
 [project]
-name = "gem"
+name = "price-action"
 version = "0.1.0"
-description = "Add your description here"
+description = "Price Action Analysis"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
