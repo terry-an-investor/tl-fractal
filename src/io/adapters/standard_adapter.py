@@ -86,7 +86,46 @@ class StandardAdapter(DataAdapter):
         # 尝试从配置中获取对应的中文名称
         from ..data_config import get_config
         config = get_config(symbol)
-        name = config.name if config else symbol
+        
+        name = symbol
+        if config:
+            name = config.name
+        else:
+            # 1. 尝试从本地缓存读取名称 (避免 API 调用)
+            import json
+            cache_file = path.parent / "security_names.json"
+            if cache_file.exists():
+                try:
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        cache = json.load(f)
+                        if symbol in cache:
+                            name = cache[symbol]
+                except Exception:
+                    pass
+            
+            # 2. 如果缓存中没有，且名称仍为 symbol，尝试通过 Wind API 获取
+            if name == symbol:
+                try:
+                    from .wind_api_adapter import WindAPIAdapter
+                    adapter = WindAPIAdapter()
+                    name = adapter.get_security_name(symbol)
+                    
+                    # 更新缓存 (如果解析成功)
+                    if name != symbol:
+                        try:
+                            if cache_file.exists():
+                                with open(cache_file, 'r', encoding='utf-8') as f:
+                                    cache = json.load(f)
+                            else:
+                                cache = {}
+                                
+                            cache[symbol] = name
+                            with open(cache_file, 'w', encoding='utf-8') as f:
+                                json.dump(cache, f, ensure_ascii=False, indent=2)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
         
         return OHLCData(
             df=df,

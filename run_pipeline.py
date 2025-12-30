@@ -68,8 +68,12 @@ def select_file_interactive() -> list[str]:
     api_files = []
     user_files = []
     
+    import re
+    # 匹配 Wind API 输出的文件名格式: 代码_后缀.xlsx (如 000510_SH.xlsx)
+    wind_file_pattern = re.compile(r'^[a-zA-Z0-9.]+_[a-zA-Z]+\.xlsx$', re.IGNORECASE)
+    
     for f in files:
-        if f.name in api_filenames:
+        if f.name in api_filenames or wind_file_pattern.match(f.name):
             api_files.append(f)
         else:
             user_files.append(f)
@@ -83,14 +87,62 @@ def select_file_interactive() -> list[str]:
     
     if api_files:
         print("  --- 🌏 来自 Wind API ---")
+        
+        # 尝试为一个 Wind 连接实例化适配器 (用于解析名称)
+        wind_adapter = None
+        
+        # 读取名称缓存
+        import json
+        cache_data = {}
+        cache_file = DATA_RAW_DIR / "security_names.json"
+        if cache_file.exists():
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    cache_data = json.load(f)
+            except Exception:
+                pass
+        
         for f in api_files:
             size_kb = f.stat().st_size / 1024
             # 找到对应的配置名称
             comment = ""
+            found_config = False
             for cfg in DATA_SOURCES:
                 if cfg.filename == f.name:
                     comment = f"[{cfg.name}]"
+                    found_config = True
                     break
+            
+            # 如果不在配置中，尝试动态解析
+            if not found_config and wind_file_pattern.match(f.name):
+                # 从文件名还原 symbol
+                symbol = f.stem.replace('_', '.')
+                
+                # 1. 尝试从缓存读取
+                if symbol in cache_data:
+                     comment = f"[{cache_data[symbol]}]"
+                
+                # 2. 如果缓存没有，才使用 API 并尝试实例化适配器
+                else:
+                    try:
+                        if wind_adapter is None:
+                            from src.io.adapters.wind_api_adapter import WindAPIAdapter
+                            wind_adapter = WindAPIAdapter()
+                        
+                        name = wind_adapter.get_security_name(symbol)
+                        if name != symbol:
+                            comment = f"[{name}]"
+                            
+                            # 更新缓存并保存
+                            cache_data[symbol] = name
+                            try:
+                                with open(cache_file, 'w', encoding='utf-8') as f:
+                                    json.dump(cache_data, f, ensure_ascii=False, indent=2)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+            
             print(f"  [{current_idx}] {f.name:<20} {comment} ({size_kb:.1f} KB)")
             current_idx += 1
         print()

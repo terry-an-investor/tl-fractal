@@ -157,6 +157,33 @@ def main():
                     name=cfg.name,
                 )
                 success_count += 1
+                
+                # --------------------------------------------------------
+                # 将名称缓存到本地 JSON，供 StandardAdapter 使用，避免重复调用 API
+                # --------------------------------------------------------
+                import json
+                
+                cache_file = Path(args.output) / "security_names.json"
+                cache_data = {}
+                
+                # 读取现有缓存
+                if cache_file.exists():
+                    try:
+                        with open(cache_file, 'r', encoding='utf-8') as f:
+                            cache_data = json.load(f)
+                    except Exception:
+                        pass
+                
+                # 更新缓存 (仅当名称不是默认的代码本身时)
+                if cfg.name and cfg.name != cfg.symbol:
+                    cache_data[cfg.symbol] = cfg.name
+                    try:
+                        with open(cache_file, 'w', encoding='utf-8') as f:
+                            json.dump(cache_data, f, ensure_ascii=False, indent=2)
+                    except Exception:
+                        print("  ⚠️ 警告: 无法保存名称缓存")
+                # --------------------------------------------------------
+                
             except Exception as e:
                 print(f"  ❌ 失败: {e}")
                 failed.append((cfg.symbol, str(e)))
