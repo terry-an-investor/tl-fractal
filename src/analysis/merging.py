@@ -377,7 +377,7 @@ def plot_merged_kline(df, col_dt, col_open, col_high, col_low, col_close, save_p
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),
             verticalalignment='top')
 
-    plt.tight_layout()
+
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"图表已保存至: {save_path}")

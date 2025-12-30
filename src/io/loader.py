@@ -16,12 +16,13 @@ from pathlib import Path
 from typing import Union, Optional
 
 from .schema import OHLCData
-from .adapters import WindCFEAdapter
+from .adapters import WindCFEAdapter, StandardAdapter
 from .adapters.base import DataAdapter
 
 
-# 注册所有可用的适配器
+# 注册所有可用的适配器 (顺序很重要，Standard 优先检测)
 ADAPTERS: dict[str, DataAdapter] = {
+    "standard": StandardAdapter(),
     "wind_cfe": WindCFEAdapter(),
 }
 

@@ -456,7 +456,7 @@ def plot_strokes(df, strokes, all_markers, col_dt, col_open, col_high, col_low, 
     
     ax.set_title('Stroke Identification (Bill Williams / Chan Theory)', fontsize=14)
     ax.set_ylabel('Price')
-    plt.tight_layout()
+
     if save_path:
         # 保存 PNG（高DPI）
         plt.savefig(save_path, dpi=200, bbox_inches='tight')

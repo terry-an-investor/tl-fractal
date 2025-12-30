@@ -504,7 +504,7 @@ class ChartBuilder:
                     indicatorHtml += `
                         <div class="ohlc-item">
                             <span class="ohlc-label">${{indicator.name}}:</span>
-                            <span class="ohlc-value" style="color:${{indicator.color}}">${{found.value.toFixed(4)}}</span>
+                            <span class="ohlc-value" style="color:${{indicator.color}}">${{found.value.toFixed(2)}}</span>
                         </div>
                     `;
                 }}
@@ -512,10 +512,10 @@ class ChartBuilder:
 
             ohlcPanel.innerHTML = `
                 <span class="ohlc-date">${{dateStr}}</span>
-                <div class="ohlc-item"><span class="ohlc-label">O:</span><span class="ohlc-value ${{changeClass}}">${{data.open.toFixed(4)}}</span></div>
-                <div class="ohlc-item"><span class="ohlc-label">H:</span><span class="ohlc-value ${{changeClass}}">${{data.high.toFixed(4)}}</span></div>
-                <div class="ohlc-item"><span class="ohlc-label">L:</span><span class="ohlc-value ${{changeClass}}">${{data.low.toFixed(4)}}</span></div>
-                <div class="ohlc-item"><span class="ohlc-label">C:</span><span class="ohlc-value ${{changeClass}}">${{data.close.toFixed(4)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">O:</span><span class="ohlc-value ${{changeClass}}">${{data.open.toFixed(2)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">H:</span><span class="ohlc-value ${{changeClass}}">${{data.high.toFixed(2)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">L:</span><span class="ohlc-value ${{changeClass}}">${{data.low.toFixed(2)}}</span></div>
+                <div class="ohlc-item"><span class="ohlc-label">C:</span><span class="ohlc-value ${{changeClass}}">${{data.close.toFixed(2)}}</span></div>
                 <div class="ohlc-item"><span class="ohlc-value ${{changeClass}}">${{changeSign}}${{changePercent}}%</span></div>
                 ${{indicatorHtml}}
             `;

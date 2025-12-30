@@ -47,8 +47,10 @@ def find_data_files(directory: Path = DATA_RAW_DIR) -> list[Path]:
     return sorted(files, key=lambda x: x.name.lower())
 
 
-def select_file_interactive() -> str:
-    """交互式选择数据文件"""
+def select_file_interactive() -> list[str]:
+    """交互式选择数据文件 (支持多选)"""
+    from src.io.data_config import DATA_SOURCES
+    
     files = find_data_files()
     
     if not files:
@@ -59,32 +61,86 @@ def select_file_interactive() -> str:
     
     if len(files) == 1:
         print(f"找到数据文件: {files[0].name}")
-        return str(files[0])
+        return [str(files[0])]
+    
+    # 区分 API 获取的文件和用户提供的文件
+    api_filenames = {cfg.filename for cfg in DATA_SOURCES}
+    api_files = []
+    user_files = []
+    
+    for f in files:
+        if f.name in api_filenames:
+            api_files.append(f)
+        else:
+            user_files.append(f)
+            
+    # 合并列表用于索引选择 (API 在前)
+    all_files = api_files + user_files
     
     print("\n📂 请选择要处理的数据文件:\n")
-    for i, f in enumerate(files, 1):
-        # 显示文件大小
-        size_kb = f.stat().st_size / 1024
-        print(f"  [{i}] {f.name}  ({size_kb:.1f} KB)")
+    
+    current_idx = 1
+    
+    if api_files:
+        print("  --- 🌏 来自 Wind API ---")
+        for f in api_files:
+            size_kb = f.stat().st_size / 1024
+            # 找到对应的配置名称
+            comment = ""
+            for cfg in DATA_SOURCES:
+                if cfg.filename == f.name:
+                    comment = f"[{cfg.name}]"
+                    break
+            print(f"  [{current_idx}] {f.name:<20} {comment} ({size_kb:.1f} KB)")
+            current_idx += 1
+        print()
+            
+    if user_files:
+        print("  --- 👤 用户手工提供 ---")
+        for f in user_files:
+            size_kb = f.stat().st_size / 1024
+            print(f"  [{current_idx}] {f.name:<20} ({size_kb:.1f} KB)")
+            current_idx += 1
     
     print(f"\n  [0] 退出\n")
+    print(f"  提示: 输入多个序号可用空格或逗号分隔 (如: 1 2 3)\n")
     
     while True:
         try:
-            choice = input("请输入序号: ").strip()
-            if choice == '0':
+            raw_input = input("请输入序号: ").strip()
+            if raw_input == '0':
                 print("已退出")
                 sys.exit(0)
             
-            idx = int(choice) - 1
-            if 0 <= idx < len(files):
-                selected = files[idx]
-                print(f"\n✅ 已选择: {selected.name}\n")
-                return str(selected)
-            else:
-                print(f"请输入 0-{len(files)} 之间的数字")
-        except ValueError:
-            print("请输入有效的数字")
+            # 支持空格或逗号分隔
+            parts = raw_input.replace(',', ' ').split()
+            selected_files = []
+            invalid_inputs = []
+            
+            for part in parts:
+                try:
+                    idx = int(part) - 1
+                    if 0 <= idx < len(all_files):
+                        selected_files.append(all_files[idx])
+                    else:
+                        invalid_inputs.append(part)
+                except ValueError:
+                    invalid_inputs.append(part)
+            
+            if invalid_inputs:
+                print(f"❌ 无效的序号: {', '.join(invalid_inputs)}")
+                continue
+                
+            if not selected_files:
+                print("未选择任何文件")
+                continue
+                
+            print(f"\n✅ 已选择 {len(selected_files)} 个文件:")
+            for f in selected_files:
+                print(f"  - {f.name}")
+            print()
+            return [str(f) for f in selected_files]
+            
         except KeyboardInterrupt:
             print("\n已取消")
             sys.exit(0)
@@ -175,7 +231,10 @@ def main(input_file: str):
     chart.add_indicator('EMA20', merged_df['ema20'], '#FFA500')  # 橙色
     chart.add_strokes(stroke_list)
     chart.add_fractal_markers(stroke_list)
-    chart.build(str(interactive_plot))
+    
+    # 设置标题: Name [Symbol]
+    chart_title = f"{data.name} [{data.symbol}]"
+    chart.build(str(interactive_plot), title=chart_title)
     
     print("\n" + "=" * 60)
     print("流水线完成！")
@@ -194,16 +253,32 @@ def main(input_file: str):
 if __name__ == "__main__":
     # 默认数据文件
     DEFAULT_FILE = "data/raw/TB10Y.WI.xlsx"
+    input_files = []
     
     # 支持命令行参数或交互式选择
     if len(sys.argv) > 1:
-        input_file = sys.argv[1]
+        # 命令行参数传入多个文件
+        input_files = sys.argv[1:]
     elif sys.stdin.isatty():
         # 交互式终端，让用户选择
-        input_file = select_file_interactive()
+        input_files = select_file_interactive()
     else:
-        # 非交互式（如 agent 调用），使用默认文件
+        # 非交互模式（如 agent 调用），使用默认文件
         print(f"非交互模式，使用默认文件: {DEFAULT_FILE}")
-        input_file = DEFAULT_FILE
+        input_files = [DEFAULT_FILE]
     
-    main(input_file)
+    # 批量处理
+    total = len(input_files)
+    for i, f in enumerate(input_files, 1):
+        if total > 1:
+            print("\n" + "#" * 60)
+            print(f"正在处理第 {i}/{total} 个文件: {Path(f).name}")
+            print("#" * 60)
+        
+        try:
+            main(f)
+        except Exception as e:
+            print(f"\n❌ 处理失败 {f}: {e}")
+            # 如果是批量处理，不要因为一个失败就退出全部（除非是严重错误）
+            if total == 1:
+                raise
